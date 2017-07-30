@@ -14,6 +14,10 @@ interface Config {
     }
 }
 
+interface State {
+    lastPresence: moment.Moment | null
+}
+
 function timeout(time: number): Promise<void> {
     return new Promise((resolve, reject) => {
         setTimeout(() => {
@@ -22,43 +26,45 @@ function timeout(time: number): Promise<void> {
     });
 }
 
-async function loop(client: any, config: Config, db: influx.InfluxDB | null) {
-    // let's find some sensors
-    let lightLevel: number = 0;
-    let presence: boolean | null = null;
-    let temp: number | null = null;
-
-    const sensors = await client.sensors.getAll();
-    for (const sensor of sensors) {
-        if (sensor.type === "ZLLLightLevel") {
-            lightLevel = sensor.state.attributes.attributes.lightlevel;
-        } else if (sensor.type === "ZLLPresence") {
-            presence = sensor.state.attributes.attributes.presence;
-        } else if (sensor.type === "ZLLTemperature") {
-            temp = sensor.state.attributes.attributes.temperature;
-        }
-    }
-
-    console.log("LightLevel: " + lightLevel + ", Presence: " + presence + ", Temp: " + temp);
-
+async function handleLight(client: any, light: any, st: State, config: Config, presence: boolean, lightLevel: number) {
     const now = moment();
     const hour = now.hours();
-    console.log("Current hour is: " + hour);
 
-    // let's find the lights
-    const lights = await client.lights.getAll();
-    let lightsOn = 0;
-    for (const light of lights) {
-        console.log(`Light ${light.id} ${light.name}. State: ${light.on} [${light.type}]`);
-        if (light.on) {
-            lightsOn += 1;
-        }
-        if (light.on && !presence && lightLevel > config.lightThres) {
+    const isOn = light.on;
+
+    if (isOn) { // light is currently on
+        if (!presence && lightLevel > config.lightThres) {
             console.log("Turning it off, no presence and enough light ("
-                + lightLevel + " > " + config.lightThres + ")");
+                        + lightLevel + " > " + config.lightThres + ")");
             light.on = false;
             await client.lights.save(light);
-        } else if (!light.on && presence && lightLevel < config.lightThres) {
+            return;
+        }
+
+        if (st.lastPresence) {
+            const hoursSince = now.diff(st.lastPresence, 'hours');
+            if ((hour >= 22 || hour < 9) && hoursSince >= 2) {
+                console.log("It's the middle of the night, and there's nobody around since "
+                    + hoursSince + " hours.");
+                light.on = false;
+                await client.lights.save(light);
+                return;
+            }
+
+            if (hoursSince >= 5) {
+                console.log("The light's on for more than 5 hours, an nobody is here. Shit.");
+                light.on = false;
+                await client.lights.save(light);
+                return;
+            }
+        } else {
+            console.log("Light is on, but there's no sign of any presence!");
+            light.on = false;
+            await client.lights.save(light);
+            return;
+        }
+    } else { // light is currently off
+        if (presence && lightLevel < config.lightThres) {
             console.log("Would turn it on, presence and not enough light ("
                 + lightLevel + " < " + config.lightThres + ")");
 
@@ -87,12 +93,50 @@ async function loop(client: any, config: Config, db: influx.InfluxDB | null) {
                 light.brightness = 254;
 
                 if (light.type === "Color light" || light.type === "Extended color light") {
-                    light.hue = 46920; // blue
-                    light.saturation = 254;
+                    light.saturation = 0;
                 }
             }
+            light.transitionTime = 5;
             await client.lights.save(light);
         }
+    }
+}
+
+async function loop(client: any, config: Config, st: State, db: influx.InfluxDB | null) {
+    // let's find some sensors
+    let lightLevel: number = 0;
+    let presence: boolean | null = null;
+    let temp: number | null = null;
+
+    const sensors = await client.sensors.getAll();
+    for (const sensor of sensors) {
+        if (sensor.type === "ZLLLightLevel") {
+            lightLevel = sensor.state.attributes.attributes.lightlevel;
+        } else if (sensor.type === "ZLLPresence") {
+            presence = sensor.state.attributes.attributes.presence;
+        } else if (sensor.type === "ZLLTemperature") {
+            temp = sensor.state.attributes.attributes.temperature;
+        }
+    }
+
+    if (presence) {
+        st.lastPresence = moment();
+    }
+
+    console.log("LightLevel: " + lightLevel + ", Presence: " + presence + ", Temp: " + temp);
+    console.log("Current hour: " + moment().hours());
+
+    // let's find the lights
+    const lights = await client.lights.getAll();
+    let lightsOn = 0;
+    for (const light of lights) {
+        const isOn = light.on;
+        console.log(`Light ${light.id} ${light.name}. State: ${isOn} [${light.type}]`);
+        if (isOn) {
+            lightsOn += 1;
+        }
+
+        await handleLight(client, light, st, config, presence || false, lightLevel);
     }
 
     // write metrics
@@ -180,8 +224,12 @@ async function main() {
         });
     }
 
+    const initState = {
+        lastPresence: null
+    };
+
     while (true) {
-        await loop(client, config, db);
+        await loop(client, config, initState, db);
         await timeout(1000);
     }
 }
