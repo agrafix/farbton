@@ -1,11 +1,17 @@
 import * as huejay from 'huejay';
 import * as fs from 'fs';
 import * as moment from 'moment';
+import * as influx from 'influx';
 
 interface Config {
     username?: string;
     bridgeIp?: string;
     lightThres: number;
+    roomName: string;
+    influx?: {
+        host: string;
+        database: string;
+    }
 }
 
 function timeout(time: number): Promise<void> {
@@ -16,7 +22,7 @@ function timeout(time: number): Promise<void> {
     });
 }
 
-async function loop(client: any, config: Config) {
+async function loop(client: any, config: Config, db: influx.InfluxDB | null) {
     // let's find some sensors
     let lightLevel: number = 0;
     let presence: boolean | null = null;
@@ -41,8 +47,12 @@ async function loop(client: any, config: Config) {
 
     // let's find the lights
     const lights = await client.lights.getAll();
+    let lightsOn = 0;
     for (const light of lights) {
         console.log(`Light ${light.id} ${light.name}. State: ${light.on} [${light.type}]`);
+        if (light.on) {
+            lightsOn += 1;
+        }
         if (light.on && !presence && lightLevel > config.lightThres) {
             console.log("Turning it off, no presence and enough light ("
                 + lightLevel + " > " + config.lightThres + ")");
@@ -83,6 +93,22 @@ async function loop(client: any, config: Config) {
             }
             await client.lights.save(light);
         }
+    }
+
+    // write metrics
+    if (db) {
+        await db.writePoints([{
+            measurement: 'hue_info',
+            tags: {
+                room: config.roomName
+            },
+            fields: {
+                lights_on: lightsOn,
+                temperature: temp || 0,
+                light_level: lightLevel,
+                presence: presence || false
+            }
+        }])
     }
 }
 
@@ -135,8 +161,27 @@ async function main() {
         return;
     }
 
+    let db: influx.InfluxDB | null = null;
+    if (config.influx) {
+        console.log("InfluxDB is enabled");
+        db = new influx.InfluxDB({
+            host: config.influx.host,
+            database: config.influx.database,
+            schema: [{
+                measurement: 'hue_info',
+                tags: ['room'],
+                fields: {
+                    lights_on: influx.FieldType.INTEGER,
+                    temperature: influx.FieldType.FLOAT,
+                    light_level: influx.FieldType.INTEGER,
+                    presence: influx.FieldType.BOOLEAN
+                }
+            }]
+        });
+    }
+
     while (true) {
-        await loop(client, config);
+        await loop(client, config, db);
         await timeout(1000);
     }
 }
