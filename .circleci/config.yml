@@ -1,0 +1,20 @@
+version: 2
+jobs:
+  build:
+    working-directory: ~/farbton
+    docker:
+      - image: circleci/node:6.10
+    steps:
+      - checkout
+      - restore_cache:
+          key: dependency-cache-{{ checksum "package.json" }}
+      - run:
+          name: install all dependencies
+          command: npm install
+      - save_cache:
+          key: dependency-cache-{{ checksum "package.json" }}
+          paths:
+            - ./node_modules
+      - run:
+          name: compile
+          command: npm run-script compile
