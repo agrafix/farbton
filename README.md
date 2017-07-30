@@ -1,5 +1,7 @@
 # Farbton
 
+[![CircleCI](https://circleci.com/gh/agrafix/farbton.svg?style=svg)](https://circleci.com/gh/agrafix/farbton)
+
 This is a small daemon written in TypeScript to control my Philips Hue setup. Note that currently
 not much is configurable and most is hardcoded to match my setup.
 
