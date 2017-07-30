@@ -1,0 +1,20 @@
+{
+	"compilerOptions": {
+	    "target": "es5",
+        "lib": [
+            "es2015"
+        ],
+        "outDir": "build",
+        "rootDir": "src",
+        "allowJs": true,
+	    "module": "commonjs",
+	    "sourceMap": true,
+        "noImplicitAny": true,
+        "noImplicitReturns": true,
+        "noImplicitThis": true,
+        "noImplicitUseStrict": true,
+        "noUnusedLocals": true,
+        "strictNullChecks": true,
+        "skipLibCheck": true
+	}
+}

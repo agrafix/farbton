@@ -1,0 +1,27 @@
+{
+  "name": "farbton",
+  "version": "1.0.0",
+  "description": "Philips Hue Magic",
+  "main": "./build/main.js",
+  "bin": {
+    "farbton": "./build/main.js"
+  },
+  "scripts": {
+    "compile": "tsc -p ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agrafix/farbton"
+  },
+  "author": "Alexander Thiemann",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^6.0.49",
+    "huejay": "^1.5.0",
+    "moment": "^2.18.1"
+  },
+  "devDependencies": {
+    "@types/core-js": "^0.9.35",
+    "typescript": "2.4.2"
+  }
+}
