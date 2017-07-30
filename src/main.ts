@@ -8,6 +8,14 @@ interface Config {
     lightThres: number;
 }
 
+function timeout(time: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+        setTimeout(() => {
+            resolve();
+        }, time);
+    });
+}
+
 async function loop(client: any, config: Config) {
     // let's find some sensors
     let lightLevel: number = 0;
@@ -127,7 +135,10 @@ async function main() {
         return;
     }
 
-    await loop(client, config);
+    while (true) {
+        await loop(client, config);
+        await timeout(1000);
+    }
 }
 
 async function run() {
