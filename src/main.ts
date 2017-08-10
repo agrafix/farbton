@@ -33,16 +33,20 @@ async function handleLight(client: any, light: any, st: State, config: Config, p
     const isOn = light.on;
 
     if (isOn) { // light is currently on
-        if (!presence && lightLevel > config.lightThres) {
-            console.log("Turning it off, no presence and enough light ("
-                        + lightLevel + " > " + config.lightThres + ")");
-            light.on = false;
-            await client.lights.save(light);
-            return;
-        }
-
         if (st.lastPresence) {
             const hoursSince = now.diff(st.lastPresence, 'hours');
+            if (hoursSince < 2 && lightLevel > config.lightThres) {
+                console.log("Recent presence, but too much light! Dimming...");
+
+                if (light.brightness > 10) {
+                    light.brightness = Math.max(light.brightness - 10, 0);
+                } else {
+                    light.on = false;
+                }
+                await client.lights.save(light);
+                return;
+            }
+
             if ((hour >= 22 || hour < 9) && hoursSince >= 2) {
                 console.log("It's the middle of the night, and there's nobody around since "
                     + hoursSince + " hours.");
@@ -61,6 +65,15 @@ async function handleLight(client: any, light: any, st: State, config: Config, p
             console.log("Light is on, but there's no sign of any presence!");
             light.on = false;
             await client.lights.save(light);
+            return;
+        }
+
+        if (lightLevel < config.lightThres * 0.8) {
+            console.log("It's too dark, making it brighter!");
+            if (light.brightness < 254) {
+                light.brightness = Math.min(254, light.brightness + 10);
+                await client.lights.save(light);
+            }
             return;
         }
     } else { // light is currently off
